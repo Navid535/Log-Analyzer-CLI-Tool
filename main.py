@@ -1,4 +1,4 @@
-import sys, re, os, argparse, time
+import sys, re, os, argparse, time, gzip
 from collections import Counter
 
 class bcolors:
@@ -12,18 +12,8 @@ class bcolors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-# LOG_PATTERN = re.compile(
-#     r'(?P<ip>\S+)'
-#     r'.*?'
-#     r'\[(?P<timestamp>\d{2}/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/\d{4}:\d{2}:\d{2}:\d{2} \+\d{4})\]\s+'
-#     r'"(?P<method>GET|POST|PUT|DELETE|HEAD|PATCH|OPTIONS)\s+(?P<path>\S+)\s+(?P<protocol>HTTP/\d\.\d)"\s+'
-#     r'(?P<status>\d+)\s+'
-#     r'(?P<size>\S+)\s+'
-#     r'"(?P<referrer>[^"]*)"\s+'
-#     r'"(?P<user_agent>[^"]*)"$'
-# )
 LOG_PATTERN = re.compile(
-    r'^(?P<ip>(?:\d{1,3}\.){3}\d{1,3})\s+-\s+-\s+\[(?P<timestamp>\d{2}/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/\d{4}:\d{2}:\d{2}:\d{2} \+\d{4})\]\s+"(?P<method>GET|POST|PUT|DELETE|HEAD|PATCH|OPTIONS)\s+(?P<path>\S+)\s+(?P<protocol>HTTP/\d\.\d)"\s+(?P<status>\d{3})\s+(?P<size>\d+|\-)\s+"-"\s+"(?P<user_agent>[^"]*)"$'
+    r'^(?P<ip>(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\s+-\s+-\s+\[(?P<timestamp>\d{2}/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/\d{4}:\d{2}:\d{2}:\d{2} \+\d{4})\]\s+"(?P<method>GET|POST|PUT|DELETE|HEAD|PATCH|OPTIONS)\s+(?P<path>\S+)\s+(?P<protocol>HTTP/\d\.\d)"\s+(?P<status>\d{3})\s+(?P<size>\d+|\-)\s+"-"\s+"(?P<user_agent>[^"]*)"$'
 )
 
 UNIQUE_IPs = set()
@@ -53,7 +43,10 @@ def parse_log_file(file_path):
     corrupted = 0
     error_counter = 0
 
-    with open(file_path, 'r') as f:
+    open_func = gzip.open if file_path.endswith('.gz') else open
+    open_mode = 'rt' if file_path.endswith('.gz') else 'r'
+
+    with open_func(file_path, open_mode) as f:
         for line in f:
             line = line.strip()
 
