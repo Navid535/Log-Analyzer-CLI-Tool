@@ -1,4 +1,4 @@
-import sys, re
+import sys, re, os, argparse, time
 from collections import Counter
 
 class bcolors:
@@ -45,6 +45,7 @@ def print_histogram(hours):
 
 
 def parse_log_file(file_path):
+    start_time = time.time()
     all_file_lines = 0
     total = 0
     corrupted = 0
@@ -81,17 +82,47 @@ def parse_log_file(file_path):
                 all_file_lines += 1
                 corrupted += 1
 
+        if total <= 0:
+            print(f'{bcolors.FAIL}Log file {file_path} is corrupted or is not a log file.{bcolors.ENDC}')
+            sys.exit(1)
+
         print(f'{bcolors.HEADER}Unique IPs: {len(UNIQUE_IPs)}{bcolors.ENDC}\n')
         print(f'{bcolors.OKBLUE}Total fine requests: {total}{bcolors.ENDC}')
+
+        total_lines = total + corrupted
+        corrupted_pct = round((corrupted / total_lines) * 100, 3) if total_lines > 0 else 0.0
         print(f'{bcolors.FAIL}Corrupted: {corrupted}{bcolors.ENDC}')
-        print(f'{bcolors.FAIL}Corrupted percent: {round((corrupted / (total + corrupted)) * 100, 3)} %{bcolors.ENDC}\n')
+        print(f'{bcolors.FAIL}Corrupted percent: {corrupted_pct} %{bcolors.ENDC}\n')
+
         print(f'{bcolors.HEADER}Top 10 of most common endpoints:')
         for e in endpoint_counter.most_common(10):
             print(f'{bcolors.OKGREEN}endpoint: "{e[0]}" occurs {e[1]} times{bcolors.ENDC}')
         print()
-        print(f'{bcolors.FAIL}Errors percent (4XX or 5XX): {round(error_counter / total * 100, 3)}%{bcolors.ENDC}\n')
+
+        err_pct = round((error_counter / total) * 100, 3) if total > 0 else 0.0
+        print(f'{bcolors.FAIL}Errors percent (4XX or 5XX): {err_pct}%{bcolors.ENDC}\n')
+
         print_histogram(hourly_counter)
+        print()
+
+        elapsed_time = time.time() - start_time
+        print(f'{bcolors.OKGREEN}Elapsed time: {elapsed_time:.4f}{bcolors.ENDC}')
 
 if __name__ == '__main__':
-    print(sys.argv)
-    # parse_log_file("access.log/access.log")
+
+    parser = argparse.ArgumentParser(
+        description='CLI tool to analyze web server access logs'
+    )
+
+    parser.add_argument(
+        "log_file",
+        help="Path to the access log file",
+    )
+
+    args = parser.parse_args()
+
+    if not os.path.isfile(args.log_file):
+        print(f'{bcolors.FAIL}Log file {args.log_file} is not a valid file or does not exist!{bcolors.ENDC}')
+        sys.exit(1)
+
+    parse_log_file(args.log_file)
