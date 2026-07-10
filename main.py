@@ -1,6 +1,6 @@
 import sys, re, os, argparse, time, gzip, json
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class bcolors:
     HEADER = '\033[95m'
@@ -37,6 +37,57 @@ def print_histogram(hours):
         print(f'Hour {hour_str}: {count:6d} | {bar}')
 
 
+def find_suspect():
+    """ TODO: soon """
+
+
+def find_error_time_range(file_path):
+    open_func = gzip.open if file_path.endswith('.gz') else open
+    open_mode = 'rt' if file_path.endswith('.gz') else 'r'
+
+    error_timestamp = []
+
+    with open_func(file_path, open_mode) as f:
+        for line in f:
+            line = line.strip()
+
+            if not line:
+                continue
+
+            match = LOG_PATTERN.match(line)  # compare with regex
+            if match:
+                if match.groupdict()['status'].startswith('5'):
+                    # 'timestamp': '01/Jun/2026:09:35:50 +0000'
+                    time_str = match.groupdict()['timestamp'].split(' ')[0]
+                    dt = datetime.strptime(time_str, '%d/%b/%Y:%H:%M:%S')
+                    error_timestamp.append(dt)
+    if not error_timestamp:
+        print(f"{bcolors.OKGREEN}No 5XX errors found in the log file.{bcolors.ENDC}")
+        return
+
+    error_timestamp.sort()
+    window_duration = timedelta(minutes=60)
+    max_errors = 0
+    best_window_start = error_timestamp[0]
+    best_window_end = error_timestamp[0]
+
+    left = 0
+    for right in range(len(error_timestamp)):
+        while error_timestamp[right] - error_timestamp[left] > window_duration:
+            left += 1
+
+        current_error_count = right - left + 1
+
+        if current_error_count > max_errors:
+            max_errors = current_error_count
+            best_window_start = error_timestamp[left]
+            best_window_end = error_timestamp[right]
+
+    print(f'{bcolors.HEADER}\nCritical 5xx error window found in the log file.{bcolors.ENDC}')
+    print(f"{bcolors.FAIL}[{best_window_start.strftime('%d/%b/%Y:%H:%M:%S')}] {bcolors.ENDC}to {bcolors.FAIL}[{best_window_end.strftime('%d/%b/%Y:%H:%M:%S')}]{bcolors.ENDC}")
+    print(f"Total 5XX errors in this 60-minute window: {bcolors.WARNING}{max_errors}{bcolors.ENDC} errors")
+
+
 def parse_log_file(file_path, json_output=False, end_points_number=10, filter_date=None, filter_status=None):
     start_time = time.time()
     all_file_lines = 0
@@ -45,8 +96,6 @@ def parse_log_file(file_path, json_output=False, end_points_number=10, filter_da
     corrupted = 0
     error_counter = 0
 
-    open_func = gzip.open if file_path.endswith('.gz') else open
-    open_mode = 'rt' if file_path.endswith('.gz') else 'r'
 
     start_dt, end_dt = None, None
     if filter_date:
@@ -58,6 +107,8 @@ def parse_log_file(file_path, json_output=False, end_points_number=10, filter_da
                 f"{bcolors.FAIL}Error: Invalid date format. Please use DD/Mon/YYYY (e.g., 01/Jun/2026).{bcolors.ENDC}")
             sys.exit(1)
 
+    open_func = gzip.open if file_path.endswith('.gz') else open
+    open_mode = 'rt' if file_path.endswith('.gz') else 'r'
     with open_func(file_path, open_mode) as f:
         for line in f:
             line = line.strip()
@@ -188,6 +239,12 @@ if __name__ == '__main__':
         help="Filter logs by a specific status (e.g. '403' or '200')",
     )
 
+    parser.add_argument(
+        "--Downtime",
+        action="store_true",
+        help="Find time range with most 5xx errors"
+    )
+
     args = parser.parse_args()
 
     if not os.path.isfile(args.log_file):
@@ -195,3 +252,7 @@ if __name__ == '__main__':
         sys.exit(1)
 
     parse_log_file(args.log_file, json_output=args.json, end_points_number=args.top, filter_date=args.date, filter_status=args.status)
+
+    if args.Downtime:
+        find_error_time_range(args.log_file)
+
