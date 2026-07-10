@@ -2,3 +2,4 @@
 .venv
 access.log
 *.pdf
+.idea
