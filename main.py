@@ -2,9 +2,8 @@ import sys, re, os, argparse, time, gzip, json
 from collections import Counter
 from datetime import datetime, timedelta
 
-from fontTools.varLib.interpolatableHelpers import find_parents_and_order
 
-
+# colorize output (copied from Stackoverflow.com)
 class bcolors:
     HEADER = "\033[95m"
     OKBLUE = "\033[94m"
@@ -17,6 +16,7 @@ class bcolors:
     UNDERLINE = "\033[4m"
 
 
+# regex for checking log lines
 LOG_PATTERN = re.compile(
     r'^(?P<ip>(?:(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d))\s+-\s+-\s+\[(?P<timestamp>\d{2}/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/\d{4}:\d{2}:\d{2}:\d{2} \+\d{4})\]\s+"(?P<method>GET|POST|PUT|DELETE|HEAD|PATCH|OPTIONS)\s+(?P<path>\S+)\s+(?P<protocol>HTTP/\d\.\d)"\s+(?P<status>\d{3})\s+(?P<size>\d+|\-)\s+"-"\s+"(?P<user_agent>[^"]*)"$'
 )
@@ -63,7 +63,6 @@ def find_suspect(suspicious_counter, threshold=20):
 
 def find_error_time_range(error_timestamp):
     if not error_timestamp:
-        # print(f"{bcolors.OKGREEN}No 5XX errors found in the log file.{bcolors.ENDC}")
         return None
 
     error_timestamp.sort()
@@ -84,20 +83,12 @@ def find_error_time_range(error_timestamp):
             best_window_start = error_timestamp[left]
             best_window_end = error_timestamp[right]
 
-    # print(
-    #     f"{bcolors.HEADER}\nCritical 5xx error window found in the log file.{bcolors.ENDC}"
-    # )
-    # print(
-    #     f"{bcolors.FAIL}[{best_window_start.strftime('%d/%b/%Y:%H:%M:%S')}] {bcolors.ENDC}to {bcolors.FAIL}[{best_window_end.strftime('%d/%b/%Y:%H:%M:%S')}]{bcolors.ENDC}"
-    # )
-    # print(
-    #     f"Total 5XX errors in this 60-minute window: {bcolors.WARNING}{max_errors}{bcolors.ENDC} errors"
-    # )
     return {
         "start": best_window_start.strftime("%m/%d/%Y:%H:%M:%S"),
         "end": best_window_end.strftime("%m/%d/%Y:%H:%M:%S"),
         "total_errors": max_errors,
     }
+
 
 def parse_log_file(
     file_path,
@@ -128,6 +119,7 @@ def parse_log_file(
 
     open_func = gzip.open if file_path.endswith(".gz") else open
     open_mode = "rt" if file_path.endswith(".gz") else "r"
+
     with open_func(file_path, open_mode) as f:
         for line in f:
             line = line.strip()
@@ -149,10 +141,10 @@ def parse_log_file(
                 if (status == "401") or ("login" in path.lower()):
                     suspicious_IPs[ip] += 1
 
-                if show_downtime and status.startswith('5'):
-                        timestamp = full_timestamp.split(" ")[0]
-                        dt = datetime.strptime(timestamp, "%d/%b/%Y:%H:%M:%S")
-                        error_timestamp_for_downtime.append(dt)
+                if show_downtime and status.startswith("5"):
+                    timestamp = full_timestamp.split(" ")[0]
+                    dt = datetime.strptime(timestamp, "%d/%b/%Y:%H:%M:%S")
+                    error_timestamp_for_downtime.append(dt)
 
                 if filter_status and status != filter_status:
                     not_included += 1
@@ -237,8 +229,11 @@ def parse_log_file(
                 output_data["suspicious_ips"] = [
                     {"ip": k, "count": v} for k, v in suspicious_IPs.most_common(10)
                 ]
+
             if show_downtime:
-                output_data["critical_downtime_window"] = find_error_time_range(error_timestamp_for_downtime)
+                output_data["critical_downtime_window"] = find_error_time_range(
+                    error_timestamp_for_downtime
+                )
             print(json.dumps(output_data, indent=4))
 
         else:
@@ -268,13 +263,19 @@ def parse_log_file(
             if show_downtime:
                 downtime_data = find_error_time_range(error_timestamp_for_downtime)
                 if downtime_data:
-                    print(f"{bcolors.HEADER}\nCritical 5xx error window found in the log file.{bcolors.ENDC}")
                     print(
-                        f"{bcolors.FAIL}[{downtime_data['start']}] to [{downtime_data['end']}]{bcolors.ENDC}")
+                        f"{bcolors.HEADER}\nCritical 5xx error window found in the log file.{bcolors.ENDC}"
+                    )
                     print(
-                        f"Total 5XX errors in this 60-minute window: {bcolors.WARNING}{downtime_data['total_errors']}{bcolors.ENDC} errors")
+                        f"{bcolors.FAIL}[{downtime_data['start']}] to [{downtime_data['end']}]{bcolors.ENDC}"
+                    )
+                    print(
+                        f"Total 5XX errors in this 60-minute window: {bcolors.WARNING}{downtime_data['total_errors']}{bcolors.ENDC} errors"
+                    )
                 else:
-                    print(f"{bcolors.OKGREEN}No 5XX errors found in the log file.{bcolors.ENDC}")
+                    print(
+                        f"{bcolors.OKGREEN}No 5XX errors found in the log file.{bcolors.ENDC}"
+                    )
 
             elapsed_time = time.time() - start_time
             print(f"{bcolors.OKGREEN}Elapsed time: {elapsed_time:.4f}{bcolors.ENDC}")
